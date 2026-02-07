@@ -1,0 +1,51 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ "main" ]  # main브랜치에 push가 오면 자동으로 배포 시작
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest # 어디서 실행할지
+    # GitHub가 준비해둔 임시 리눅스 서버에서 실행
+    # 이 서버가 빌드도 하고 파일도 보내고 EC2에 접속도 한다
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # 코드 가져오기
+        # git clone 대신 GitHub Actions가 코드를 가져옴
+
+      # JDK설치
+      # 빌드하려면 java 필요, GitHub 서버에 Java17 설치
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build with Gradle # ./gradlew build와 동일한 작업
+        run: ./gradlew build -x test
+        
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+          
+      # EC2로 JAR 전송
+      # 빌드된 .jar를 EC2 서버로 복사
+      - name: Copy jar to EC2
+        run: |
+          scp -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+          build/libs/*.jar \
+          ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
+          
+    # EC2실행
+    # 기존 프로세스 종료, 새 jar 실행, 백그라운드 실행을 자동으로 실행
+      - name: Run app on EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+            ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            pkill -f app.jar || true
+            nohup java -jar /home/ubuntu/app.jar --spring.profiles.active=prod > /home/ubuntu/app.log 2>&1 &
+          EOF
