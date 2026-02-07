@@ -28,11 +28,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew build -x test
-
-
-      - name: Build with Gradle # ./gradlew build와 동일한 작업
+      - name: Build (bootJar) # ./gradlew build와 동일한 작업
         run: ./gradlew build -x test
         
       - name: Setup SSH key
@@ -45,9 +41,11 @@ jobs:
       # 빌드된 .jar를 EC2 서버로 복사
       - name: Copy jar to EC2
         run: |
+          JAR=$(ls build/libs/*.jar | grep -v plain | head -n 1)
+          echo "Deploying: $JAR"
           scp -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
-          build/libs/*.jar \
-          ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
+            "$JAR" \
+            ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/app.jar
           
     # EC2실행
     # 기존 프로세스 종료, 새 jar 실행, 백그라운드 실행을 자동으로 실행
